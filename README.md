@@ -4,41 +4,58 @@ A collection of useful utility scripts for setting up and maintaining local deve
 
 ## Included Tools
 
-### `setup_smf_wdp.sh`
-This script automates the installation and initial setup of:
+---
 
-- **Simple Machines Forum (SMF)** under `/smf`
-- **WordPress** under `/wdp`
-- MariaDB databases for each application
-- PHP 8.3 + Nginx configuration (must be pre-installed)
+### `install_web_stack.sh`
 
-It performs a **fresh install** each time it's run — wiping previous installations and recreating the databases and directories.
+Installs a modern web server stack on Debian 12:
 
-#### Features
-- Automatically downloads and extracts SMF and WordPress
-- Drops and recreates their respective MariaDB databases and users
-- Configures WordPress (`wp-config.php`) automatically
-- Leaves `install.php` for SMF so you can complete the wizard in-browser
+- **Nginx**
+- **MariaDB**
+- **PHP 8.3** via the Sury repository
+- Common PHP extensions: FPM, MySQL, mbstring, curl, zip, gd, etc.
+
+#### Usage
+
+\`\`\`bash
+chmod +x install_web_stack.sh
+sudo ./install_web_stack.sh
+\`\`\`
+
+After running, your system will be ready to host PHP-based apps using Nginx and MariaDB.
 
 ---
 
-## Usage
+### `setup_smf_wdp.sh`
 
-Make sure your system has Nginx, PHP 8.3, and MariaDB installed and configured.
+This script automates the installation and setup of:
 
-Then run:
+- **Simple Machines Forum (SMF)** under `/smf`
+- **WordPress** under `/wdp`
+- Fresh MariaDB databases for each
+
+Each time it runs, it performs a clean install — dropping any previous database or files.
+
+#### Features
+
+- Automatically downloads and installs SMF and WordPress
+- Drops and recreates their databases and users
+- Configures WordPress (\`wp-config.php\`)
+- Leaves \`install.php\` for SMF so you can complete setup manually
+
+#### Usage
 
 \`\`\`bash
 chmod +x setup_smf_wdp.sh
 sudo ./setup_smf_wdp.sh
 \`\`\`
 
-After the script completes, visit in your browser:
+Afterward, visit in your browser:
 
-- `http://<your-server-ip>/wdp` — WordPress
-- `http://<your-server-ip>/smf/install.php` — SMF Installer
+- \`http://<your-server-ip>/wdp\` — WordPress setup
+- \`http://<your-server-ip>/smf/install.php\` — SMF installer
 
-**Important:** After completing the SMF installer, delete `install.php`:
+**Important:** After completing SMF installation, remove the installer for security:
 
 \`\`\`bash
 sudo rm /var/www/html/smf/install.php
@@ -48,4 +65,9 @@ sudo rm /var/www/html/smf/install.php
 
 ## Coming Soon
 
-This repository will grow to include additional system utility tools, automation scripts, and maintenance helpers. Check back for updates.
+Additional utilities will be added here to automate:
+
+- File management
+- Backup and deployment tasks
+- CMS/app auto-installers
+- Security and optimization helpers
