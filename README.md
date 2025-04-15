@@ -30,8 +30,8 @@ After running, your system will be ready to host PHP-based apps using Nginx and 
 
 This script automates the installation and setup of:
 
-- **Simple Machines Forum (SMF)** under `/smf`
-- **WordPress** under `/wdp`
+- **Simple Machines Forum (SMF)** under \`/smf\`
+- **WordPress** under \`/wdp\`
 - Fresh MariaDB databases for each
 
 Each time it runs, it performs a clean install — dropping any previous database or files.
@@ -59,6 +59,30 @@ Afterward, visit in your browser:
 
 \`\`\`bash
 sudo rm /var/www/html/smf/install.php
+\`\`\`
+
+---
+
+### `install_node_lts.sh`
+
+Installs the latest **LTS** version of Node.js on Debian using the official NodeSource repository.
+
+#### Usage
+
+\`\`\`bash
+chmod +x install_node_lts.sh
+sudo ./install_node_lts.sh
+\`\`\`
+
+After installation, you will have:
+
+- \`node\` (LTS version)
+- \`npm\` (Node.js package manager)
+
+To install a global process manager like PM2 (optional):
+
+\`\`\`bash
+npm install -g pm2
 \`\`\`
 
 ---
