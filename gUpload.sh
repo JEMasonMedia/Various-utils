@@ -1,22 +1,30 @@
 #!/bin/bash
 
-# Change to your repo directory if needed
+# Navigate to the script's directory
 cd "$(dirname "$0")"
 
-# Ensure we're inside a git repo
+# Ensure this is a Git repo
 if ! git rev-parse --is-inside-work-tree &>/dev/null; then
   echo "Error: Not inside a Git repository."
   exit 1
 fi
 
-# Optional: update remote URL or branch name logic here
-DEFAULT_COMMIT_MSG="Auto-update commit on $(date '+%Y-%m-%d %H:%M:%S')"
+# Show current git status and branch
+echo "Current branch: $(git branch --show-current)"
+git status
 
-read -rp "Enter commit message (or leave blank for default): " MSG
-COMMIT_MSG=${MSG:-$DEFAULT_COMMIT_MSG}
+# Get commit message
+DEFAULT_MSG="Auto-update commit on $(date '+%Y-%m-%d %H:%M:%S')"
+read -rp "Enter commit message (or press Enter for default): " MSG
+COMMIT_MSG=${MSG:-$DEFAULT_MSG}
 
-# Stage, commit, and push all
+# Stage all changes
 git add .
-git commit -m "$COMMIT_MSG"
-git push
 
+# Commit only if there are staged changes
+if git diff --cached --quiet; then
+  echo "No changes to commit."
+else
+  git commit -m "$COMMIT_MSG"
+  git push
+fi
