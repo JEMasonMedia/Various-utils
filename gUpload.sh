@@ -1,30 +1,22 @@
 #!/bin/bash
 
-# Navigate to the script's directory
+# If running as root, re-run as regular user with environment
+if [ "$EUID" -eq 0 ] && [ -n "$SUDO_USER" ]; then
+  echo "[*] Re-running script as $SUDO_USER with preserved environment..."
+  exec sudo -u "$SUDO_USER" -E "$0" "$@"
+fi
+
 cd "$(dirname "$0")"
 
-# Ensure this is a Git repo
 if ! git rev-parse --is-inside-work-tree &>/dev/null; then
   echo "Error: Not inside a Git repository."
   exit 1
 fi
 
-# Show current git status and branch
-echo "Current branch: $(git branch --show-current)"
-git status
-
-# Get commit message
-DEFAULT_MSG="Auto-update commit on $(date '+%Y-%m-%d %H:%M:%S')"
+DEFAULT_COMMIT_MSG="Auto-update commit on $(date '+%Y-%m-%d %H:%M:%S')"
 read -rp "Enter commit message (or press Enter for default): " MSG
-COMMIT_MSG=${MSG:-$DEFAULT_MSG}
+COMMIT_MSG=${MSG:-$DEFAULT_COMMIT_MSG}
 
-# Stage all changes
 git add .
-
-# Commit only if there are staged changes
-if git diff --cached --quiet; then
-  echo "No changes to commit."
-else
-  git commit -m "$COMMIT_MSG"
-  git push
-fi
+git commit -m "$COMMIT_MSG"
+git push
