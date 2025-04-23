@@ -1,110 +1,92 @@
 #!/bin/bash
-
 set -e
 
 source "$(dirname "$0")/check_prereqs.sh"
 source "$(dirname "$0")/generate_keys.sh"
 
-# Install gum if not present
+# Ensure gum is installed for better prompts
 if ! command -v gum &>/dev/null; then
-  echo "[+] Installing gum for enhanced prompts..."
+  echo "[+] Installing gum..."
   sudo mkdir -p /etc/apt/keyrings
   curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
   echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
-  sudo apt update
-  sudo apt install gum -y
+  sudo apt update && sudo apt install -y gum
 fi
 
-# Prompt helpers
-ask() { if command -v gum &>/dev/null; then gum input --placeholder="$1"; else read -rp "$1: " val && echo "$val"; fi; }
-ask_secret() { if command -v gum &>/dev/null; then gum input --password --placeholder="$1"; else read -rsp "$1: " val && echo; echo "$val"; fi; }
-ask_select() { if command -v gum &>/dev/null; then gum choose "$@"; else read -rp "Choose one of: $* > " val && echo "$val"; fi; }
+# Prompt user for install dir
+INSTALL_DIR=$(gum input --placeholder "Enter install directory (default: ~/strapi)")
+INSTALL_DIR=${INSTALL_DIR:-"$HOME/strapi"}
 
-STRAPI_PARENT=$(ask "Enter folder to create your Strapi project in (leave empty for current dir)")
-STRAPI_PARENT=${STRAPI_PARENT:-.}
-mkdir -p "$STRAPI_PARENT"
-
-STRAPI_PROJECT=$(ask "Enter Strapi project folder name (e.g. my-strapi, or '.' for current dir)")
-if [[ -z "$STRAPI_PROJECT" || "$STRAPI_PROJECT" == "." ]]; then
-  TARGET_DIR="$STRAPI_PARENT"
-  INSTALL_TARGET="."
-else
-  TARGET_DIR="$STRAPI_PARENT/$STRAPI_PROJECT"
-  INSTALL_TARGET="$STRAPI_PROJECT"
+# Confirm deletion if exists
+if [[ -d "$INSTALL_DIR" ]]; then
+  if gum confirm "Delete existing directory at $INSTALL_DIR?"; then
+    echo "[*] Cleaning old project files in $INSTALL_DIR..."
+    sudo rm -rf "$INSTALL_DIR"
+  else
+    echo "Aborted."
+    exit 1
+  fi
 fi
 
-if [ -d "$TARGET_DIR" ] && [ "$(ls -A "$TARGET_DIR")" ]; then
-  CONFIRM=$(ask_select "Erase existing contents in $TARGET_DIR?" "Yes" "No")
-  if [[ "$CONFIRM" != "Yes" ]]; then echo "Aborting setup."; exit 1; fi
-  rm -rf "$TARGET_DIR" && mkdir -p "$TARGET_DIR"
-fi
+mkdir -p "$INSTALL_DIR"
+cd /tmp
 
-VALID_DB_TYPES=(sqlite postgres mysql mariadb)
-echo "Choose a database type: ${VALID_DB_TYPES[*]}"
-while true; do
-  DB_TYPE=$(ask "Database")
-  if [[ " ${VALID_DB_TYPES[*]} " =~ " $DB_TYPE " ]]; then break; else echo "Invalid option"; fi
-done
+# Launch Strapi installer interactively
+npx create-strapi-app@latest "$INSTALL_DIR" --no-run --use-npm
+cd "$INSTALL_DIR"
 
-if [[ "$DB_TYPE" != "sqlite" ]]; then
-  DB_NAME=$(ask "Database name")
-  DB_USER=$(ask "Database user")
-  DB_PASS=$(ask_secret "Database password")
-fi
+# Detect project type (ts or js)
+CONFIG_EXT="js"
+[[ -f ./tsconfig.json ]] && CONFIG_EXT="ts"
 
-STRAPI_PORT=$(ask "Port to run Strapi on (default 3131)")
-STRAPI_PORT=${STRAPI_PORT:-3131}
-USE_SESSION=$(ask_select "Use session-based auth instead of JWT?" "Yes" "No")
-USE_TS=$(ask_select "Use TypeScript?" "Yes" "No")
+# Extract DB and PORT from .env or config
+DB_CLIENT=$(grep -i DATABASE_CLIENT .env | cut -d= -f2 | xargs)
+STRAPI_PORT=$(grep -i '^PORT=' .env | cut -d= -f2 | grep -oE '[0-9]+' | head -n 1)
+STRAPI_PORT=${STRAPI_PORT:-1337}
 
-apt update
-install_if_missing ufw nodejs curl
+# Install and configure DB if needed
+case "$DB_CLIENT" in
+  postgres)
+    install_if_missing postgresql
+    DB_NAME=$(grep -i DATABASE_NAME .env | cut -d= -f2 | xargs)
+    DB_USER=$(grep -i DATABASE_USERNAME .env | cut -d= -f2 | xargs)
+    DB_PASS=$(grep -i DATABASE_PASSWORD .env | cut -d= -f2 | xargs)
+    cd /tmp
+    sudo -u postgres psql -tc "DROP DATABASE IF EXISTS $DB_NAME;"
+    sudo -u postgres psql -tc "DROP ROLE IF EXISTS $DB_USER;"
+    sudo -u postgres psql -c "CREATE ROLE $DB_USER WITH LOGIN PASSWORD '$DB_PASS';"
+    sudo -u postgres psql -c "CREATE DATABASE $DB_NAME OWNER $DB_USER;"
+    cd "$INSTALL_DIR"
+    ;;
+  mysql|mariadb)
+    install_if_missing mariadb-server
+    DB_NAME=$(grep -i DATABASE_NAME .env | cut -d= -f2 | xargs)
+    DB_USER=$(grep -i DATABASE_USERNAME .env | cut -d= -f2 | xargs)
+    DB_PASS=$(grep -i DATABASE_PASSWORD .env | cut -d= -f2 | xargs)
+    sudo mysql -u root -e "DROP DATABASE IF EXISTS $DB_NAME;"
+    sudo mysql -u root -e "DROP USER IF EXISTS '$DB_USER'@'localhost';"
+    sudo mysql -u root -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
+    sudo mysql -u root -e "CREATE DATABASE $DB_NAME;"
+    sudo mysql -u root -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
+    ;;
+esac
 
-if [[ "$DB_TYPE" == "postgres" ]]; then
-  install_if_missing postgresql
-  cd /tmp
-  sudo -u postgres psql -c "DROP DATABASE IF EXISTS $DB_NAME;"
-  sudo -u postgres psql -c "DROP ROLE IF EXISTS $DB_USER;"
-  sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';"
-  sudo -u postgres psql -c "CREATE DATABASE $DB_NAME OWNER $DB_USER;"
-fi
-
-if [[ "$DB_TYPE" == "mysql" || "$DB_TYPE" == "mariadb" ]]; then
-  install_if_missing mariadb-server
-  mysql -u root -e "DROP DATABASE IF EXISTS $DB_NAME;"
-  mysql -u root -e "DROP USER IF EXISTS '$DB_USER'@'localhost';"
-  mysql -u root -e "CREATE DATABASE $DB_NAME;"
-  mysql -u root -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
-  mysql -u root -e "GRANT ALL PRIVILEGES ON $DB_NAME.* TO '$DB_USER'@'localhost';"
-  mysql -u root -e "FLUSH PRIVILEGES;"
-fi
-
-cd "$TARGET_DIR"
-npm init -y
-npm install strapi@latest --save
-
-JWT_SECRET=$(generate_key key)
+# Generate secrets
 KEY1=$(generate_key key)
 KEY2=$(generate_key key)
 APP_KEYS="[\"$KEY1\", \"$KEY2\"]"
 API_SALT=$(generate_key salt)
 
-{
-  echo "DATABASE_CLIENT=$DB_TYPE"
-  [[ "$DB_TYPE" != "sqlite" ]] && {
-    echo "DATABASE_NAME=$DB_NAME"
-    echo "DATABASE_USERNAME=$DB_USER"
-    echo "DATABASE_PASSWORD=$DB_PASS"
-    echo "DATABASE_HOST=127.0.0.1"
-    echo "DATABASE_PORT=5432"
-    echo "DATABASE_SSL=false"
-  }
-  echo "JWT_SECRET=$JWT_SECRET"
-} > .env
+# Ensure JWT_SECRET is present in .env
+if ! grep -q '^JWT_SECRET=' .env; then
+  echo "JWT_SECRET=$(generate_key key)" >> .env
+  echo "[+] Added JWT_SECRET to .env"
+fi
 
+# Create config files
 mkdir -p ./config/env/production
-for EXT in js ts; do
-cat <<EOFCONFIG > ./config/server.$EXT
+for EXT in "$CONFIG_EXT"; do
+  cat <<EOF > ./config/server.$EXT
 module.exports = ({ env }) => ({
   host: env('HOST', '0.0.0.0'),
   port: env.int('PORT', $STRAPI_PORT),
@@ -112,17 +94,20 @@ module.exports = ({ env }) => ({
     keys: $APP_KEYS,
   },
 });
-EOFCONFIG
+EOF
 
-cat <<EOFADMIN > ./config/admin.$EXT
+  cat <<EOFADMIN > ./config/admin.$EXT
 module.exports = ({ env }) => ({
   apiToken: {
     salt: '$API_SALT',
   },
+  auth: {
+    secret: env('JWT_SECRET'),
+  },
 });
 EOFADMIN
 
-cat <<EOFPROD > ./config/env/production/server.$EXT
+  cat <<EOF > ./config/env/production/server.$EXT
 module.exports = ({ env }) => ({
   host: env('HOST', '0.0.0.0'),
   port: env.int('PORT', $STRAPI_PORT),
@@ -130,10 +115,10 @@ module.exports = ({ env }) => ({
     keys: $APP_KEYS,
   },
 });
-EOFPROD
+EOF
 
-if [[ "$USE_SESSION" == "Yes" ]]; then
-cat <<EOFMW > ./config/middlewares.$EXT
+  if gum confirm "Enable session-based authentication?"; then
+    cat <<EOF > ./config/middlewares.$EXT
 module.exports = [
   'strapi::errors',
   'strapi::security',
@@ -146,13 +131,16 @@ module.exports = [
   'strapi::favicon',
   'strapi::public',
 ];
-EOFMW
-fi
+EOF
+  fi
+
 done
 
-ufw allow "$STRAPI_PORT"/tcp
-ufw reload || true
+# Allow UFW port
+sudo ufw allow "$STRAPI_PORT"/tcp || true
 
-echo "Installing dependencies and starting Strapi..."
+# Install and launch
 npm install
+npm run seed:example || true
 npm run develop
+
