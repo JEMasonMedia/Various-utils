@@ -17,6 +17,21 @@ DEFAULT_COMMIT_MSG="Auto-update commit on $(date '+%Y-%m-%d %H:%M:%S')"
 read -rp "Enter commit message (or press Enter for default): " MSG
 COMMIT_MSG=${MSG:-$DEFAULT_COMMIT_MSG}
 
+# Stage all changes
 git add .
+
+# Show staged files
+echo
+echo "[*] Files staged for commit:"
+git diff --cached --name-status
+echo
+
+# Confirm before committing
+read -rp "Proceed with commit? (y/n): " CONFIRM
+if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
+  echo "Commit cancelled."
+  exit 0
+fi
+
 git commit -m "$COMMIT_MSG"
 git push
