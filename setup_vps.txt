@@ -1,0 +1,64 @@
+cat << 'EOF' > setup_vps.sh
+#!/bin/bash
+
+# Bail on error
+set -e
+
+# Ensure script is being run as root
+if [ "$EUID" -ne 0 ]; then
+  echo "Please run as root"
+  exit 1
+fi
+
+# Prompt for new sudo username
+read -rp "Enter new sudo username: " NEW_USER
+
+# Prompt for password (insecure method - for better use 'chpasswd' with input redirection or hashed passwords)
+read -rsp "Enter password for $NEW_USER: " PASSWORD
+echo
+
+# Lock down root SSH login
+sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config || echo 'PermitRootLogin no' >> /etc/ssh/sshd_config
+
+# Ensure sudo and ufw are installed
+apt update
+apt install -y sudo ufw
+
+# Create new user if not exists
+if ! id "$NEW_USER" &>/dev/null; then
+  useradd -m -s /bin/bash "$NEW_USER"
+  echo "$NEW_USER:$PASSWORD" | chpasswd
+  usermod -aG sudo "$NEW_USER"
+fi
+
+# Set up SSH key for new user
+USER_HOME="/home/$NEW_USER"
+mkdir -p "$USER_HOME/.ssh"
+chmod 700 "$USER_HOME/.ssh"
+touch "$USER_HOME/.ssh/authorized_keys"
+chmod 600 "$USER_HOME/.ssh/authorized_keys"
+
+# Generate key pair (user will need to extract private key manually after copy)
+KEY_FILE="$USER_HOME/.ssh/${NEW_USER}_id_rsa"
+if [ ! -f "$KEY_FILE" ]; then
+  sudo -u "$NEW_USER" ssh-keygen -t rsa -b 4096 -f "$KEY_FILE" -N ""
+  cat "$KEY_FILE.pub" >> "$USER_HOME/.ssh/authorized_keys"
+  chown -R "$NEW_USER:$NEW_USER" "$USER_HOME/.ssh"
+
+  echo "Private key for $NEW_USER (keep this safe):"
+  cat "$KEY_FILE"
+fi
+
+# Enable UFW with basic SSH access
+ufw allow OpenSSH
+ufw --force enable
+
+# Restart SSH to apply root login restriction
+systemctl restart sshd
+
+echo "Setup complete. Rebooting in 10 seconds..."
+sleep 10
+reboot
+EOF
+
+chmod +x setup_vps.sh
