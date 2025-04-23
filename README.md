@@ -1,6 +1,8 @@
 # Various Utilities for VPS and Development Setup
 
-This repository contains a collection of Bash scripts designed to streamline the setup and maintenance of development environments and servers. These tools are especially useful for rolling out new VPS instances, preparing environments for web applications, and automating common administrative tasks.
+This repository contains a growing collection of shell utilities designed to streamline the setup of development and production environments—particularly when working with VPS deployments or rebuilding systems after breaking changes.
+
+These scripts automate everything from package installation to Strapi project initialization, FTP configuration, SSH access, and more. The goal is to provide a reliable and repeatable toolset that minimizes human error and accelerates setup time.
 
 ## Table of Contents
 
